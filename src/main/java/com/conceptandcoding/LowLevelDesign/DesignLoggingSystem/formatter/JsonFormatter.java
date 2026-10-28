@@ -1,18 +1,14 @@
-package com.conceptandcoding.LowLevelDesign.DesignLoggingSystem;
+package com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.formatter;
 
-import java.util.stream.Collectors;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.model.LogMessage;
+import java.time.Instant;
 
-public final class JsonLogFormatter implements LogFormatter {
+public final class JsonFormatter implements LogFormatter {
     @Override
     public String format(LogMessage message) {
-        String context = message.context().entrySet().stream()
-                .sorted(java.util.Map.Entry.comparingByKey())
-                .map(entry -> quote(entry.getKey()) + ":" + quote(entry.getValue()))
-                .collect(Collectors.joining(","));
-        return "{\"timestamp\":" + quote(message.timestamp().toString())
-                + ",\"level\":" + quote(message.level().name())
-                + ",\"message\":" + quote(message.message())
-                + ",\"context\":{" + context + "}}";
+        return "{\"timestamp\":" + quote(Instant.ofEpochMilli(message.getTimestamp()).toString())
+                + ",\"level\":" + quote(message.getLevel().name())
+                + ",\"message\":" + quote(message.getMessage()) + "}";
     }
 
     private static String quote(String value) {

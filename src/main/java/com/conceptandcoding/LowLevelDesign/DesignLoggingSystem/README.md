@@ -1,47 +1,70 @@
 # Design Logging System
 
-A runnable Java 17 adaptation of the design discussed in
-[Design Logging System by codeWithAryan](https://codewitharyan.com/tech-blogs/design-logging-system).
-The implementation is written for this repository rather than a verbatim copy of the article snippets.
+Updated from [shubhkpatel/Low-Level-Design: logger](https://github.com/shubhkpatel/Low-Level-Design/tree/fd753ebd1fc03b6a499c8671151f62ed7dc13c05/src/main/java/org/nailyourinterview/lld/logger),
+upstream commit `fd753ebd1fc03b6a499c8671151f62ed7dc13c05`. Original implementation credit: shubhkpatel.
+This replaces the earlier article-based logging example in this package.
 
-## Design
+## Design and API
 
-- `Logger` is a lazily initialized singleton. Replacing its immutable `LoggerConfig`
-  updates the global severity threshold and handler chain atomically; each log call uses one snapshot.
-- `LogHandler` forms an immutable chain of responsibility. Every matching destination
-  receives the entry once, using its own minimum level, formatter and appender.
-- `LogAppender` strategies write to the console or append UTF-8 lines to a file.
-- `LogFormatter` strategies produce text or JSON, including escaped message/context fields.
-- `LogMessage` stores a timestamp, severity, message and copied string context map.
-  Levels are ordered `DEBUG < INFO < WARNING < ERROR < FATAL`.
+- `Logger` is a public singleton, accessed through `Logger.getInstance()`.
+- `LogHandlerConfiguration.build()` returns one shared handler chain:
+  `TRACE -> DEBUG -> INFO -> WARN -> ERROR -> FATAL`.
+- Each handler matches exactly one severity and notifies its registered appenders.
+  This combines Chain of Responsibility with observer-style subscriptions.
+- Register using `LogHandlerConfiguration.addAppenderForLevel(level, appender)`;
+  unregister using `removeAppenderForLevel`. Re-adding the same appender object
+  to a level does not duplicate writes.
+- `ConsoleAppender` and `FileAppender` apply their own `LogFormatter` strategy.
+  `PlainTextFormatter` uses local timestamps; `JsonFormatter` emits escaped JSON
+  with an ISO-8601 UTC timestamp.
+- `LogMessage` is immutable and contains severity, message and epoch-millisecond timestamp.
+- Convenience methods are `trace`, `debug`, `info`, `warn`, `error` and `fatal`.
 
-This adaptation uses enum levels consistently, connects formatters to appenders,
-provides the context accessor used by JSON formatting, and avoids duplicate writes
-from severity handlers. New destinations implement `LogAppender`.
+Subscriptions are for exact levels: subscribing to ERROR does not receive FATAL.
+A level with no subscriptions produces no output. To target multiple levels,
+register the appender with each desired level. The old minimum-level `LoggerConfig`,
+`setConfig`, context map and `warning` API have been replaced by this source's API;
+imports for models, formatters, appenders and levels now use their subpackages.
 
-## Run from the repository root
+## Integration fixes
+
+Lombok annotations were replaced with ordinary constructors/getters/setters for
+Java 17 compatibility without another dependency. TRACE now has a handler and
+convenience method, covering every declared enum value. Chain construction happens
+once instead of rewiring shared handlers on repeated builds. Appender lists use
+`CopyOnWriteArrayList` for safe subscription changes during logging.
+
+JSON timestamps are quoted and message strings escape quotes, backslashes and
+control characters. File output is UTF-8 and synchronized per appender; it flushes
+each entry, implements `AutoCloseable`, and reports I/O failures through
+`UncheckedIOException`. Unregister an appender before closing it, after stopping
+its concurrent producers: an in-progress log call can retain a subscription snapshot.
+Use one appender instance per file. Custom formatters/appenders must be safe for
+concurrent calls. Appender failures propagate and stop delivery to later appenders.
+
+Logging is synchronous; there is no async queue, log rotation or retry mechanism.
+
+## Compile and run from the repository root
 
 ```sh
 mkdir -p target/logging-system
-javac -d target/logging-system src/main/java/com/conceptandcoding/LowLevelDesign/DesignLoggingSystem/*.java
+find src/main/java/com/conceptandcoding/LowLevelDesign/DesignLoggingSystem -name '*.java' > target/logging-system/sources.txt
+javac -d target/logging-system @target/logging-system/sources.txt
 java -cp target/logging-system com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.Main
 ```
 
-The demo writes INFO and higher to the console, ERROR and higher as JSON to
-`logging-system.log`, and then enables DEBUG at runtime. An optional first argument
-sets the log file path. Its parent directory must already exist.
+The demo sends INFO to the console and ERROR to both the console and a JSON log
+file, then unregisters its subscriptions and closes the file. The default output
+is `logging-system.log`; an optional first argument changes the path. The parent
+directory must exist.
 
-## Run the focused tests
+## Focused tests
 
 ```sh
 javac -cp target/logging-system -d target/logging-system src/test/java/com/conceptandcoding/LowLevelDesign/DesignLoggingSystem/LoggingSystemTest.java
 java -cp target/logging-system com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.LoggingSystemTest
 ```
 
-Tests cover severity filtering, chain routing without duplicate writes, runtime
-configuration, singleton identity, context snapshots, JSON escaping, file append
-behavior and propagation of destination failures. They require no Spring context.
-
-Logging is synchronous. An I/O failure is passed to the caller and stops the chain;
-there is no asynchronous queue, retry, rotation or database destination. File writes
-are synchronized per appender instance; share one instance for a given file.
+Tests cover all six levels, exact-level routing, multiple appenders, deduplication,
+unsubscription, concurrent logging, input validation, JSON escaping, console output,
+UTF-8 file append, close behavior and I/O failure reporting. No Spring context is needed.

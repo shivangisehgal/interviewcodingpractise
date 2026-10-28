@@ -1,41 +1,31 @@
 package com.conceptandcoding.LowLevelDesign.DesignLoggingSystem;
 
-import java.io.IOException;
-import java.time.Instant;
-import java.util.Map;
-import java.util.Objects;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.enums.LogLevel;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.handlers.*;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.model.LogMessage;
 
 public final class Logger {
-    private volatile LoggerConfig config = new LoggerConfig(LogLevel.INFO,
-            new LogHandler(LogLevel.DEBUG, new SimpleLogFormatter(), new ConsoleAppender(), null));
+    private static final Logger INSTANCE = new Logger();
 
-    private Logger() { }
+    private final LogHandler handlerChain;
 
-    private static class Holder {
-        private static final Logger INSTANCE = new Logger();
+    private Logger() {
+        handlerChain = LogHandlerConfiguration.build();
     }
 
-    public static Logger getInstance() { return Holder.INSTANCE; }
-
-    public void setConfig(LoggerConfig config) {
-        this.config = Objects.requireNonNull(config);
+    public static Logger getInstance() {
+        return INSTANCE;
     }
 
-    public void log(LogLevel level, String message) throws IOException {
-        log(level, message, Map.of());
+    public void log(LogLevel level, String message) {
+        LogMessage msg = new LogMessage(level, message, System.currentTimeMillis());
+        handlerChain.handle(msg);
     }
 
-    public void log(LogLevel level, String message, Map<String, String> context) throws IOException {
-        Objects.requireNonNull(level);
-        LoggerConfig snapshot = config;
-        if (snapshot.minimumLevel().accepts(level)) {
-            snapshot.handlers().handle(new LogMessage(Instant.now(), level, message, context));
-        }
-    }
-
-    public void debug(String message) throws IOException { log(LogLevel.DEBUG, message); }
-    public void info(String message) throws IOException { log(LogLevel.INFO, message); }
-    public void warning(String message) throws IOException { log(LogLevel.WARNING, message); }
-    public void error(String message) throws IOException { log(LogLevel.ERROR, message); }
-    public void fatal(String message) throws IOException { log(LogLevel.FATAL, message); }
+    public void trace(String msg) { log(LogLevel.TRACE, msg); }
+    public void debug(String msg) { log(LogLevel.DEBUG, msg); }
+    public void info(String msg)  { log(LogLevel.INFO, msg); }
+    public void warn(String msg)  { log(LogLevel.WARN, msg); }
+    public void error(String msg) { log(LogLevel.ERROR, msg); }
+    public void fatal(String msg) { log(LogLevel.FATAL, msg); }
 }

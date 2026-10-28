@@ -1,21 +1,28 @@
 package com.conceptandcoding.LowLevelDesign.DesignLoggingSystem;
 
-import java.nio.file.Path;
-import java.util.Map;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.appenders.ConsoleAppender;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.appenders.FileAppender;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.enums.LogLevel;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.formatter.JsonFormatter;
+import com.conceptandcoding.LowLevelDesign.DesignLoggingSystem.formatter.PlainTextFormatter;
 
 public final class Main {
-    public static void main(String[] args) throws Exception {
-        Path logFile = Path.of(args.length == 0 ? "logging-system.log" : args[0]);
-        LogHandler errorsToFile = new LogHandler(LogLevel.ERROR, new JsonLogFormatter(),
-                new FileAppender(logFile), null);
-        LogHandler console = new LogHandler(LogLevel.DEBUG, new SimpleLogFormatter(),
-                new ConsoleAppender(), errorsToFile);
+    public static void main(String[] args) {
         Logger logger = Logger.getInstance();
-        logger.setConfig(new LoggerConfig(LogLevel.INFO, console));
-        logger.debug("Filtered at the INFO threshold");
-        logger.info("Application started");
-        logger.log(LogLevel.ERROR, "Payment declined", Map.of("requestId", "req-42"));
-        logger.setConfig(new LoggerConfig(LogLevel.DEBUG, console));
-        logger.debug("Debug logging enabled at runtime");
+        ConsoleAppender console = new ConsoleAppender(new PlainTextFormatter());
+        String path = args.length == 0 ? "logging-system.log" : args[0];
+        try (FileAppender file = new FileAppender(new JsonFormatter(), path)) {
+            LogHandlerConfiguration.addAppenderForLevel(LogLevel.INFO, console);
+            LogHandlerConfiguration.addAppenderForLevel(LogLevel.ERROR, console);
+            LogHandlerConfiguration.addAppenderForLevel(LogLevel.ERROR, file);
+            try {
+                logger.info("Application started");
+                logger.error("Payment failed: \"declined\"");
+            } finally {
+                LogHandlerConfiguration.removeAppenderForLevel(LogLevel.INFO, console);
+                LogHandlerConfiguration.removeAppenderForLevel(LogLevel.ERROR, console);
+                LogHandlerConfiguration.removeAppenderForLevel(LogLevel.ERROR, file);
+            }
+        }
     }
 }
